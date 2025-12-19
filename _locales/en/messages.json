@@ -1,0 +1,89 @@
+{
+  "Name": {
+    "message": "SearchNG"
+  },
+  "Description": {
+    "message": "Excludes search results containing the set keywords from Bing and Google."
+  },
+  "NGListHeader": {
+    "message": "NG Word List (Separated by line breaks)"
+  },
+  "ContextMenuLabel": {
+    "message": "Add selected text to NG list"
+  },
+  "ContextMenu_PopupWindow_Message": {
+    "message": "Do you want to add the selected text to the NG list?:"
+  },
+  "ContextMenu_PopupWindow_Yes": {
+    "message": "Add"
+  },
+  "ContextMenu_PopupWindow_No": {
+    "message": "No"
+  },
+  "NGListDesc": {
+    "message": "Options can be added at the end of a line in the following format."
+  },
+  "OptListHeader": {
+    "message": "Option list:"
+  },
+  "Option_NoTitle": {
+    "message": "Exclude page title from check"
+  },
+  "Option_NoSite": {
+    "message": "Exclude site name from check"
+  },
+  "Option_SiteSettings": {
+    "message": "Target Sites"
+  },
+  "Option_EnableBing": {
+    "message": "Enable on Bing"
+  },
+  "Option_EnableGoogle": {
+    "message": "Enable on Google"
+  },
+  "Option_EnableRegex": {
+    "message": "Enable Regular Expressions"
+  },
+  "ContextMenu_PopupWindow_CheckboxRegex": {
+    "message": "Enable Regular Expressions"
+  },
+  "Tooltip_Delete": {
+    "message": "Delete"
+  },
+  "Tooltip_ConfirmDelete": {
+    "message": "Are you sure you want to delete '%s'?"
+  },
+  "PopupStatusEnabled": {
+    "message": "Enabled"
+  },
+  "PopupStatusDisabled": {
+    "message": "Disabled"
+  },
+  "PopupOptBtn": {
+    "message": "Options"
+  },
+  "ToggleBar_ItemsHidden": {
+    "message": "items hidden"
+  },
+  "ToggleBar_ShowHidden": {
+    "message": "Show Hidden"
+  },
+  "ToggleBar_HideFiltered": {
+    "message": "Hide Filtered"
+  },
+  "ToggleBar_Filtered": {
+    "message": "Filtered"
+  },
+  "Popup_BlockedCount": {
+    "message": "items blocked"
+  },
+  "Option_Save": {
+    "message": "Save"
+  },
+  "Option_Saved": {
+    "message": "Saved"
+  },
+  "Option_PageTitle": {
+    "message": "Options"
+  }
+}

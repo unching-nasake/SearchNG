@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/css/options.css" />
+    <script src="/js/options.js" defer></script>
+    <title id="PageTitle">Keywords blocker for Bing - Options</title>
+  </head>
+
+  <body>
+    <div class="container">
+      <h1 id="OptTitle">NGW4B - Options</h1>
+
+      <!-- NG List Card -->
+      <div class="card">
+        <div class="card-header">
+          <h2 id="NGListHeader">NG List</h2>
+        </div>
+        <div class="card-body">
+          <textarea name="nglist" id="nglist" rows="15"></textarea>
+          <div class="actions">
+            <button id="btn_save_nglist" class="primary-btn">
+              Save NG List
+            </button>
+            <span id="save_status" class="status-msg"></span>
+          </div>
+          <p id="NGListDesc">
+            Options can be added at the end of a line in the following format.
+          </p>
+          <p>
+            <code id="code-opts">[option1(, option2, ...)]</code>
+          </p>
+          <h3 id="OptListHeader">Option list:</h3>
+          <ul class="options-list" id="OptList">
+            <li>
+              <code>notitle</code> -
+              <span id="OptListDesc_NoTitle"
+                >Exclude page title from check</span
+              >
+            </li>
+            <li>
+              <code>nosite</code> -
+              <span id="OptListDesc_NoSite">Exclude site name from check</span>
+            </li>
+            <li>
+              <code>nodesc</code> -
+              <span id="OptListDesc_NoDesc"
+                >Exclude page description from check</span
+              >
+            </li>
+            <li>
+              <code>regex</code> -
+              <span id="Option_EnableRegex">Enable Regular Expressions</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Site Settings Card -->
+      <div class="card">
+        <div class="card-header">
+          <h2 id="i18n_Option_SiteSettings">Target Sites</h2>
+        </div>
+        <div class="card-body">
+          <!-- Bing Settings Group -->
+          <div class="site-group">
+            <div class="toggle-container">
+              <span id="i18n_Option_EnableBing">Enable on Bing</span>
+              <label class="switch">
+                <input type="checkbox" id="chk_enable_bing" checked />
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="sub-options">
+              <label
+                ><input type="checkbox" id="chk_bing_main" />
+                <span id="Label_Main">Main</span></label
+              >
+              <label
+                ><input type="checkbox" id="chk_bing_video" />
+                <span id="Label_Video">Video</span></label
+              >
+              <label
+                ><input type="checkbox" id="chk_bing_image" />
+                <span id="Label_Image">Image</span></label
+              >
+              <label
+                ><input type="checkbox" id="chk_bing_shop" />
+                <span id="Label_Shop">Shopping</span></label
+              >
+              <label
+                ><input type="checkbox" id="chk_bing_news" />
+                <span id="Label_News">News</span></label
+              >
+            </div>
+          </div>
+
+          <!-- Google Settings Group -->
+          <div class="site-group">
+            <div class="toggle-container">
+              <span id="i18n_Option_EnableGoogle">Enable on Google</span>
+              <label class="switch">
+                <input type="checkbox" id="chk_enable_google" checked />
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="sub-options">
+              <label
+                ><input type="checkbox" id="chk_google_main" />
+                <span id="Label_Main_Google">Main</span></label
+              >
+              <label
+                ><input type="checkbox" id="chk_google_video" />
+                <span id="Label_Video_Google">Video</span></label
+              >
+              <label
+                ><input type="checkbox" id="chk_google_image" />
+                <span id="Label_Image_Google">Image</span></label
+              >
+              <label
+                ><input type="checkbox" id="chk_google_shop" />
+                <span id="Label_Shop_Google">Shopping</span></label
+              >
+              <label
+                ><input type="checkbox" id="chk_google_news" />
+                <span id="Label_News_Google">News</span></label
+              >
+              <label
+                ><input type="checkbox" id="chk_google_shorts" />
+                <span id="Label_Shorts_Google">Shorts</span></label
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

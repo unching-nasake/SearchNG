@@ -1,0 +1,92 @@
+{
+  "Name": {
+    "message": "SearchNG"
+  },
+  "Description": {
+    "message": "設定したキーワードを含む検索結果をBingとGoogleから除外します。"
+  },
+  "NGListHeader": {
+    "message": "NGワードリスト (改行区切り)"
+  },
+  "ContextMenuLabel": {
+    "message": "選択したテキストをNGリストに追加"
+  },
+  "ContextMenu_PopupWindow_Message": {
+    "message": "選択テキストをNGリストに追加しますか？："
+  },
+  "ContextMenu_PopupWindow_Yes": {
+    "message": "登録"
+  },
+  "ContextMenu_PopupWindow_No": {
+    "message": "いいえ"
+  },
+  "NGListDesc": {
+    "message": "行末に以下の形式でオプションを追加できます。"
+  },
+  "OptListHeader": {
+    "message": "オプションリスト："
+  },
+  "Option_NoTitle": {
+    "message": "ページタイトルはチェック対象から除外"
+  },
+  "Option_NoSite": {
+    "message": "サイト名はチェック対象から除外"
+  },
+  "Option_NoDesc": {
+    "message": "説明文はチェック対象から除外"
+  },
+  "Option_SiteSettings": {
+    "message": "対象サイト設定"
+  },
+  "Option_EnableBing": {
+    "message": "Bingで有効にする"
+  },
+  "Option_EnableGoogle": {
+    "message": "Googleで有効にする"
+  },
+  "Option_EnableRegex": {
+    "message": "正規表現を有効化"
+  },
+  "ContextMenu_PopupWindow_CheckboxRegex": {
+    "message": "正規表現を有効化"
+  },
+  "Tooltip_Delete": {
+    "message": "削除"
+  },
+  "Tooltip_ConfirmDelete": {
+    "message": "本当に「%s」を削除しますか？"
+  },
+  "PopupStatusEnabled": {
+    "message": "有効"
+  },
+  "PopupStatusDisabled": {
+    "message": "無効"
+  },
+  "PopupOptBtn": {
+    "message": "設定"
+  },
+  "ToggleBar_ItemsHidden": {
+    "message": "件が非表示"
+  },
+  "ToggleBar_ShowHidden": {
+    "message": "除外された結果を表示"
+  },
+  "ToggleBar_HideFiltered": {
+    "message": "除外された結果を非表示"
+  },
+  "ToggleBar_Filtered": {
+    "message": "除外済"
+  },
+  "Popup_BlockedCount": {
+    "message": "件ブロック中"
+  },
+  "Option_Save": {
+    "message": "保存"
+  },
+  "Option_Saved": {
+    "message": "保存しました"
+  },
+  "Option_PageTitle": {
+    "message": "設定"
+  }
+}

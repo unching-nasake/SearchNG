@@ -1,0 +1,166 @@
+:root {
+  --background-color: #f9f9fb;
+  --surface-color: #ffffff;
+  --primary-text-color: #1f2328;
+  --secondary-text-color: #636c76;
+  --accent-color: #636c76;
+  --accent-color-hover: #525a61;
+  --border-color: #d0d7de;
+  --toggle-bg-off: #d0d7de;
+  --toggle-bg-on: #0969da;
+  --toggle-slider-color: #ffffff;
+  --status-enabled-color: #1a7f37;
+  --status-disabled-color: #a04141;
+  --shadow-color: rgba(27, 31, 36, 0.075);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--primary-text-color);
+  background-color: var(--background-color);
+  margin: 0;
+  width: 220px;
+  height: auto; /* コンテンツに合わせて自動調整、または固定値を増やす */
+  min-height: 160px; /* 少し短く調整 */
+  padding-bottom: 10px; /* 下部に余白を追加（以前の半分程度） */
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  align-items: center;
+}
+
+.status-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+  background-color: var(--surface-color);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 2px var(--shadow-color);
+  margin-bottom: 16px;
+}
+
+.block-count {
+  font-size: 0.9em;
+  color: var(--secondary-text-color);
+  margin-top: 4px;
+}
+
+#statusText {
+  font-size: 1.1em;
+  font-weight: 500;
+}
+
+.status-enabled {
+  color: var(--status-enabled-color);
+}
+
+.status-disabled {
+  color: var(--status-disabled-color);
+}
+
+/* Modern Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--toggle-bg-off);
+  transition: 0.2s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--toggle-slider-color);
+  transition: 0.2s;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+input:checked + .slider {
+  background-color: var(--toggle-bg-on);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+input:focus-visible + .slider {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.footer-section {
+  width: 100%;
+  text-align: center;
+}
+
+.options-button {
+  display: inline-block;
+  text-decoration: none;
+  font-weight: 500;
+  color: var(--toggle-slider-color);
+  background-color: var(--accent-color);
+  border: 1px solid var(--accent-color);
+  border-radius: 6px;
+  padding: 5px 16px;
+  transition: background-color 0.2s cubic-bezier(0.3, 0, 0.5, 1);
+  width: 70%; /* ユーザー要望: 70% */
+  box-sizing: border-box; /* paddingを含めた幅計算 */
+}
+
+.options-button:hover {
+  background-color: var(--accent-color-hover);
+  border-color: var(--accent-color-hover);
+  cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: #0d1117;
+    --surface-color: #161b22;
+    --primary-text-color: #c9d1d9;
+    --secondary-text-color: #8b949e;
+    --accent-color: #8b949e;
+    --accent-color-hover: #c9d1d9;
+    --border-color: #30363d;
+    --toggle-bg-off: #30363d;
+    --toggle-slider-color: #c9d1d9;
+    --status-enabled-color: #3fb950;
+    --status-disabled-color: #f85149;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+  }
+}
