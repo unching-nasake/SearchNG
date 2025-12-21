@@ -1,5 +1,25 @@
 "use strict";
 
+const browserAPI = typeof chrome !== "undefined" ? chrome : browser;
+const storageAPI = (browserAPI.storage &&
+  (browserAPI.storage.sync || browserAPI.storage.local)) || {
+  get: (d, cb) => cb(d),
+  set: (d, cb) => cb && cb(),
+};
+
+if (typeof chrome === "undefined") {
+  window.chrome = browserAPI;
+}
+
+const safeI18n = (key, defaultText = "") => {
+  try {
+    if (typeof chrome !== "undefined" && chrome.runtime?.id && chrome.i18n) {
+      return chrome.i18n.getMessage(key) || defaultText;
+    }
+  } catch (e) {}
+  return defaultText;
+};
+
 /**
  * NGW4B - Bing NG Word Blocker
  * コード構造の整理、ツールチップ修正、ニュース検索対応、画像検索レイアウト修正、最適化
@@ -23,58 +43,43 @@ const NGW4B = {
   // 初期化
   // -------------------------------------------------------------------------
   init: function () {
+    // サイト判定
+    const host = window.location.hostname;
+    this.state.siteType = host.includes("google") ? "google" : "bing";
+
+    // フリッカー防止: 即座にクラスを付与して候補要素を隠す
+    document.documentElement.classList.add("ngw4b_active");
+
+    // 監視対象の設定
+    this.setupObserver();
+
     // 設定の読み込み
     this.loadSettings(() => {
-      // 初回フィルタリング
-      if (this.state.isEnabled) {
-        this.runFilter();
+      // 無効の場合はフリッカー防止を解除
+      if (!this.state.isEnabled || !this.state.isEnabledSite) {
+        document.documentElement.classList.remove("ngw4b_active");
       }
+
       // UIの初期化
       NGW4B_UI.init();
-    });
 
-    // ストレージ変更監視
-    chrome.storage.onChanged.addListener((changes, namespace) => {
-      if (namespace === "sync") {
-        if (changes.ngw4b_status) {
-          this.state.isEnabled = changes.ngw4b_status.newValue;
-          if (this.state.isEnabled) {
-            // 有効時: revealモードを解除し、フィルタを実行
-            document.body.classList.remove("ngw4b_revealed");
-            this.runFilter();
-          } else {
-            // 無効時: revealモードにしてフィルタ済み要素を一時表示
-            if (this.state.debounceTimer)
-              clearTimeout(this.state.debounceTimer);
-            document.body.classList.add("ngw4b_revealed");
-          }
-        }
-        if (changes.ngw4b_nglist) {
-          this.state.ngList = this.parseNGList(changes.ngw4b_nglist.newValue);
-          if (this.state.isEnabled) {
-            this.runFilter();
-          }
-        }
-      }
-    });
+      // 初回フィルタリング
+      this.runFilter();
 
-    // メッセージリスナー (コンテキストメニュー & ポップアップからの問い合わせ)
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      if (request.action === "executeFunction") {
-        NGW4B_UI.showContextMenu(request.selectionText);
-        sendResponse({ status: "success" });
-      } else if (request.action === "getBlockCount") {
-        // ポップアップからのブロック件数問い合わせ
-        sendResponse({ count: this.state.hiddenCount });
-      }
-      return true;
+      // セーフティ: 3秒後に強制表示（スクリプト障害対策）
+      setTimeout(() => {
+        this.markChecked();
+        document.documentElement.classList.remove("ngw4b_active");
+      }, 3000);
     });
+  },
 
-    // MutationObserverによる監視 (パフォーマンス最適化: デバウンス付き)
+  setupObserver: function () {
+    if (this.state.observer) return;
+
     this.state.observer = new MutationObserver((mutations) => {
       if (!this.state.isEnabled) return;
 
-      // 無駄な実行を防ぐための簡易チェック
       let shouldRun = false;
       for (const mutation of mutations) {
         if (mutation.addedNodes.length > 0) {
@@ -87,27 +92,21 @@ const NGW4B = {
         if (this.state.debounceTimer) clearTimeout(this.state.debounceTimer);
         this.state.debounceTimer = setTimeout(() => {
           this.runFilter();
-        }, 300); // 300msの遅延実行
+        }, 50);
+      }
+
+      // トグルバーが表示されていない場合は再試行を検討
+      if (typeof NGW4B_UI !== "undefined" && !NGW4B_UI.toggleBarElem) {
+        NGW4B_UI.createToggleBar();
       }
     });
 
-    // 監視対象の要素特定
-    const target = document.body;
-    if (target) {
-      this.state.observer.observe(target, { childList: true, subtree: true });
-    }
+    const target = document.documentElement || document;
+    this.state.observer.observe(target, { childList: true, subtree: true });
   },
 
   loadSettings: function (callback) {
-    // サイト判定
-    const host = window.location.hostname;
-    if (host.includes("google")) {
-      this.state.siteType = "google";
-    } else {
-      this.state.siteType = "bing";
-    }
-
-    chrome.storage.sync.get(
+    storageAPI.get(
       [
         "ngw4b_status",
         "ngw4b_nglist",
@@ -123,22 +122,18 @@ const NGW4B = {
         "google_image",
         "google_shop",
         "google_news",
+        "google_news_site",
         "google_shorts",
       ],
       (items) => {
         // Global Status
-        if (items.ngw4b_status === undefined) {
-          this.state.isEnabled = true;
-          chrome.storage.sync.set({ ngw4b_status: true });
-        } else {
-          this.state.isEnabled = items.ngw4b_status;
-        }
+        this.state.isEnabled = items.ngw4b_status !== false;
 
         // Site Specific Status
         if (this.state.siteType === "bing") {
-          this.state.isEnabledSite = items.enabled_bing !== false; // default true
+          this.state.isEnabledSite = items.enabled_bing !== false;
         } else {
-          this.state.isEnabledSite = items.enabled_google !== false; // default true
+          this.state.isEnabledSite = items.enabled_google !== false;
         }
 
         // Sub-options status
@@ -151,17 +146,84 @@ const NGW4B = {
         this.state.google_video = items.google_video !== false;
         this.state.google_image = items.google_image !== false;
         this.state.google_shop = items.google_shop !== false;
-        this.state.google_shop = items.google_shop !== false;
         this.state.google_news = items.google_news !== false;
+        this.state.google_news_site = items.google_news_site !== false;
         this.state.google_shorts = items.google_shorts !== false;
 
         if (items.ngw4b_nglist) {
           this.state.ngList = this.parseNGList(items.ngw4b_nglist);
         }
 
+        // 監視の登録
+        this.setupStorageListener();
+        this.setupMessageListener();
+
         if (callback) callback();
       }
     );
+  },
+
+  setupStorageListener: function () {
+    chrome.storage.onChanged.addListener((changes) => {
+      if (changes.ngw4b_status) {
+        this.state.isEnabled = changes.ngw4b_status.newValue;
+        if (this.state.isEnabled) {
+          // 有効化: フィルタリングを再実行
+          document.body.classList.remove("ngw4b_revealed");
+          document.documentElement.classList.add("ngw4b_active");
+          this.runFilter();
+        } else {
+          // 無効化: オリジナル状態に完全復元
+          if (this.state.debounceTimer) clearTimeout(this.state.debounceTimer);
+
+          // トグルバーを削除
+          const toggleBar = document.getElementById("ngw4b_toggle_bar");
+          if (toggleBar) toggleBar.remove();
+
+          // すべての隠し要素を表示し、拡張機能のクラスと属性を削除
+          document.querySelectorAll(".ngw4b_hidden").forEach((el) => {
+            el.classList.remove("ngw4b_hidden");
+            el.removeAttribute("data-ngw4b-word");
+            el.removeAttribute("data-ngw4b-tipx");
+            el.removeAttribute("data-ngw4b-tipy");
+            // 除外ラベルを削除
+            const label = el.querySelector(".ngw4b_filtered_label");
+            if (label) label.remove();
+          });
+
+          // チェック済みマークを削除
+          document.querySelectorAll(".ngw4b_checked").forEach((el) => {
+            el.classList.remove("ngw4b_checked");
+          });
+
+          // body と html からクラスを削除
+          document.body.classList.remove("ngw4b_revealed");
+          document.documentElement.classList.remove("ngw4b_active");
+
+          // body の margin-top をリセット
+          document.body.style.marginTop = "";
+
+          // カウントをリセット
+          this.state.hiddenCount = 0;
+        }
+      }
+      if (changes.ngw4b_nglist) {
+        this.state.ngList = this.parseNGList(changes.ngw4b_nglist.newValue);
+        if (this.state.isEnabled) this.runFilter();
+      }
+    });
+  },
+
+  setupMessageListener: function () {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === "executeFunction") {
+        NGW4B_UI.showContextMenu(request.selectionText);
+        sendResponse({ status: "success" });
+      } else if (request.action === "getBlockCount") {
+        sendResponse({ count: this.state.hiddenCount });
+      }
+      return true;
+    });
   },
 
   // -------------------------------------------------------------------------
@@ -173,39 +235,27 @@ const NGW4B = {
   },
 
   runFilter: function () {
-    if (!this.state.isEnabled) return;
-    if (!this.state.isEnabledSite) return; // サイト別無効化チェック
-    if (!this.state.ngList || this.state.ngList.length === 0) return;
-
-    this.state.ngList.forEach((wordLine) => {
-      this.processWord(wordLine);
-    });
-
-    // カウント更新
-    this.state.hiddenCount = document.querySelectorAll(".ngw4b_hidden").length;
-
-    // バックグラウンドにブロック件数を通知（アイコンバッジ更新用）
-    try {
-      if (chrome.runtime?.id) {
-        chrome.runtime.sendMessage(
-          {
-            action: "updateBadge",
-            count: this.state.hiddenCount,
-          },
-          () => {
-            // エラーがあっても無視（コンテキスト無効化時など）
-            if (chrome.runtime.lastError) {
-            }
-          }
-        );
-      }
-    } catch (e) {
-      // 拡張機能が無効化/更新された場合の対策
-      // console.log("Extension context invalidated");
+    // 無効時はフリッカー防止を解除して全表示
+    if (!this.state.isEnabled || !this.state.isEnabledSite) {
+      document.documentElement.classList.remove("ngw4b_active");
+      this.markChecked();
+      this.updateCounts();
+      return;
     }
 
-    // 画像検索のレイアウト修正 (ウィンドウリサイズイベントを発火させて再計算を促す)
-    // 動画検索もグリッドレイアウトの場合があるため追加
+    if (this.state.ngList && this.state.ngList.length > 0) {
+      this.state.ngList.forEach((wordLine) => {
+        this.processWord(wordLine);
+      });
+    }
+
+    // 判定完了した要素を表示
+    this.markChecked();
+
+    // カウントと表示の更新
+    this.updateCounts();
+
+    // 画像検索のレイアウト修正
     if (
       window.location.href.includes("/images/") ||
       window.location.href.includes("/videos/")
@@ -214,15 +264,57 @@ const NGW4B = {
     }
   },
 
+  markChecked: function () {
+    // フィルタリング対象のセレクタ
+    const selectors = [
+      "div.g",
+      "div.SoaBEf",
+      "g-card",
+      ".MjjYud > div",
+      ".Gx5Zad",
+      ".xpd",
+      ".b_algo",
+      ".b_ad",
+      ".ans_nws",
+      ".ans_vid",
+      ".mc_vtvc",
+      ".yMSM6d",
+      "div.sHEJob", // Google Video Card
+    ];
+    document.querySelectorAll(selectors.join(",")).forEach((el) => {
+      // 除外対象でなければ「判定済み」クラスを付与して表示
+      if (!el.classList.contains("ngw4b_hidden")) {
+        el.classList.add("ngw4b_checked");
+      } else {
+        el.classList.remove("ngw4b_checked");
+      }
+    });
+  },
+
+  updateCounts: function () {
+    this.state.hiddenCount = document.querySelectorAll(".ngw4b_hidden").length;
+
+    if (typeof NGW4B_UI !== "undefined") {
+      NGW4B_UI.updateToggleBarCount(this.state.hiddenCount);
+    }
+
+    try {
+      if (chrome.runtime?.id) {
+        chrome.runtime.sendMessage({
+          action: "updateBadge",
+          count: this.state.hiddenCount,
+        });
+      }
+    } catch (e) {}
+  },
+
   processWord: function (wordLine) {
     let word = wordLine;
     const optMatch = word.match(/\[[a-z,]*\]$/);
-
-    // オプション解析
-    let isRegex = false;
-    let optNoTitle = false;
-    let optNoSite = false;
-    let optNoDesc = false;
+    let isRegex = false,
+      optNoTitle = false,
+      optNoSite = false,
+      optNoDesc = false;
 
     if (optMatch !== null) {
       const opts = optMatch[0]
@@ -243,47 +335,40 @@ const NGW4B = {
     };
     const currentURL = window.location.href;
 
-    const pattern_img = /^https:\/\/www\.bing\.com\/images\//;
-    const pattern_news = /^https:\/\/www\.bing\.com\/news\//;
-    const pattern_video = /^https:\/\/www\.bing\.com\/videos\//;
-    const pattern_shop = /^https:\/\/www\.bing\.com\/shop\?/;
-
-    // ページタイプ別処理
     if (this.state.siteType === "bing") {
-      if (pattern_img.test(currentURL)) {
-        if (!this.state.bing_image) return;
-        NGW4B_Blocker.blockImages(word, isRegex, wordLine);
-      } else if (pattern_news.test(currentURL)) {
-        if (!this.state.bing_news) return;
-        NGW4B_Blocker.blockNews(word, isRegex, options, wordLine);
-      } else if (pattern_video.test(currentURL)) {
-        if (!this.state.bing_video) return;
-        NGW4B_Blocker.blockVideos(word, isRegex, options, wordLine);
-      } else if (pattern_shop.test(currentURL)) {
-        if (!this.state.bing_shop) return;
-        NGW4B_Blocker.blockShop(word, isRegex, wordLine);
+      if (currentURL.includes("/images/")) {
+        if (this.state.bing_image)
+          NGW4B_Blocker.blockImages(word, isRegex, wordLine);
+      } else if (currentURL.includes("/news/")) {
+        if (this.state.bing_news)
+          NGW4B_Blocker.blockNews(word, isRegex, options, wordLine);
+      } else if (currentURL.includes("/videos/")) {
+        if (this.state.bing_video)
+          NGW4B_Blocker.blockVideos(word, isRegex, options, wordLine);
+      } else if (currentURL.includes("/shop?")) {
+        if (this.state.bing_shop)
+          NGW4B_Blocker.blockShop(word, isRegex, wordLine);
       } else {
-        if (!this.state.bing_main) return;
-        NGW4B_Blocker.blockMain(word, isRegex, options, wordLine);
-        NGW4B_Blocker.cleanupMain();
+        if (this.state.bing_main) {
+          NGW4B_Blocker.blockMain(word, isRegex, options, wordLine);
+          NGW4B_Blocker.cleanupMain();
+        }
       }
     } else {
-      // Google Logic
       const isVideoSearch =
         currentURL.includes("tbm=vid") || currentURL.includes("udm=7");
       const isNewsSearch =
         currentURL.includes("tbm=nws") || currentURL.includes("udm=4");
-      const isImageSearch =
-        currentURL.includes("tbm=isch") || currentURL.includes("udm=2");
+      const isGoogleNewsSite = window.location.hostname === "news.google.com";
 
-      if (isVideoSearch) {
-        if (!this.state.google_video) return;
-      } else if (isNewsSearch) {
-        if (!this.state.google_news) return;
-      }
+      if (isGoogleNewsSite && !this.state.google_news_site) return;
+      if (isVideoSearch && !this.state.google_video) return;
+      if (isNewsSearch && !this.state.google_news) return;
 
       NGW4B_Blocker.blockGoogle(word, isRegex, options, wordLine);
     }
+
+    this.updateCounts();
   },
 };
 
@@ -293,58 +378,218 @@ const NGW4B = {
 const NGW4B_UI = {
   tooltipElem: null,
   currentTarget: null,
+  toggleBarElem: null,
+  tooltipTimeout: null,
+  isTouchDevice: "ontouchstart" in window || navigator.maxTouchPoints > 0,
 
   init: function () {
     this.injectStyles();
     this.createTooltip();
+    this.createToggleBar();
+    this.setupClickHandler();
+  },
+
+  // モバイル用クリックハンドラー（除外済み要素のリンク遷移を防止）
+  setupClickHandler: function () {
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (!document.body.classList.contains("ngw4b_revealed")) return;
+
+        // ラベルそのものがクリックされたかチェック
+        const label = e.target.closest(".ngw4b_filtered_label");
+        if (label) {
+          // リンク遷移を防止
+          e.preventDefault();
+          e.stopPropagation();
+
+          const target = label.parentElement; // .ngw4b_hidden
+          const word = target.getAttribute("data-ngw4b-word");
+          if (word) {
+            this.showTooltip(e, word, target);
+          }
+        }
+      },
+      true
+    );
+  },
+
+  // トグルバーの作成
+  createToggleBar: function () {
+    if (this.toggleBarElem) return;
+
+    // bodyがまだ存在しない場合は、少し待ってから再試行（document_start対策）
+    if (!document.body) {
+      setTimeout(() => this.createToggleBar(), 100);
+      return;
+    }
+
+    this.toggleBarElem = document.createElement("div");
+    this.toggleBarElem.id = "ngw4b_toggle_bar";
+    this.toggleBarElem.style.display = "none";
+
+    const countSpan = document.createElement("span");
+    countSpan.id = "ngw4b_bar_count";
+    countSpan.textContent =
+      "0 " + safeI18n("ToggleBar_ItemsHidden", "items hidden");
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.id = "ngw4b_bar_toggle";
+    toggleBtn.textContent = safeI18n("ToggleBar_ShowHidden", "Show Hidden");
+    toggleBtn.onclick = () => {
+      const isRevealed = document.body.classList.toggle("ngw4b_revealed");
+      toggleBtn.textContent = isRevealed
+        ? safeI18n("ToggleBar_HideFiltered", "Hide Filtered")
+        : safeI18n("ToggleBar_ShowHidden", "Show Hidden");
+    };
+
+    this.toggleBarElem.appendChild(countSpan);
+    this.toggleBarElem.appendChild(toggleBtn);
+
+    // 固定表示のためbodyに直接配置
+    document.body.appendChild(this.toggleBarElem);
+
+    // インターバルで存在チェック
+    if (!this.reappendInterval) {
+      this.reappendInterval = setInterval(() => {
+        if (
+          !document.getElementById("ngw4b_toggle_bar") &&
+          this.toggleBarElem
+        ) {
+          this.toggleBarElem = null;
+          this.createToggleBar();
+        }
+      }, 2000);
+    }
+
+    this.updateToggleBarCount(NGW4B.state.hiddenCount);
+  },
+
+  // トグルバーの件数更新
+  updateToggleBarCount: function (count) {
+    try {
+      if (!this.toggleBarElem) return;
+
+      const countSpan = this.toggleBarElem.querySelector("#ngw4b_bar_count");
+      if (countSpan) {
+        countSpan.textContent =
+          count + " " + safeI18n("ToggleBar_ItemsHidden", "items hidden");
+      }
+
+      // 件数が0より大きい場合のみ表示
+      this.toggleBarElem.style.display = count > 0 ? "flex" : "none";
+
+      // トグルバーがDOMから外れていないかチェック（SPA遷移対策）
+      if (count > 0 && !document.getElementById("ngw4b_toggle_bar")) {
+        this.toggleBarElem = null; // リセットして再作成を促す
+        this.createToggleBar();
+      }
+    } catch (e) {
+      // ignore context invalidated
+    }
   },
 
   injectStyles: function () {
     if (document.getElementById("ngw4b_style_main")) return;
     const style = document.createElement("style");
     style.id = "ngw4b_style_main";
-    // 視認性向上のためのCSS修正 (outline, box-shadow)
-    style.textContent = `
+    // 共通スタイル
+    let css = `
+      /*
+         フリッカー防止: ngw4b_active中、かつ未判定(:not(.ngw4b_checked))の要素を隠す。
+         :not()セレクタにより、.ngw4b_checkedが付与されると自動的にルール対象外になる。
+      */
+      html.ngw4b_active div.g:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active div.SoaBEf:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active g-card:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active .MjjYud > div:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active .Gx5Zad:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active .xpd:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active .b_algo:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active .b_ad:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active .ans_nws:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active .ans_vid:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active .mc_vtvc:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active .yMSM6d:not(.ngw4b_checked):not(.ngw4b_hidden),
+      html.ngw4b_active div.sHEJob:not(.ngw4b_checked):not(.ngw4b_hidden) {
+        opacity: 0 !important;
+      }
+
       body:not(.ngw4b_revealed) .ngw4b_hidden {
         display: none !important;
       }
       .ngw4b_revealed .ngw4b_hidden {
-        opacity: 0.8 !important; /* 視認性向上 */
-        position: relative;
+        opacity: 0.8 !important;
+        position: relative !important;
         cursor: help;
         min-height: 20px;
+        background-color: rgba(255, 0, 0, 0.05) !important;
       }
-      /* 枠線と背景色を::afterで実装して前面に表示 */
-      /* ただし、子孫に.ngw4b_hiddenがある場合は表示しない（巻き込み防止） */
-      .ngw4b_revealed .ngw4b_hidden::after {
-        content: "";
-        position: absolute;
-        inset: 0; /* top/left/right/bottom: 0 */
-        border: 2px dashed #ff0000;
-        background-color: rgba(255, 0, 0, 0.05);
-        z-index: 2147483640;
-        pointer-events: none;
-      }
-      /* 子孫に.ngw4b_hiddenがある要素は枠線を非表示 */
-      .ngw4b_revealed .ngw4b_hidden:has(.ngw4b_hidden)::after {
-        display: none;
-      }
+    `;
+
+    // サイト別スタイル
+    if (NGW4B.state.siteType === "bing") {
+      // Bing: outlineを使用 (overflow: hidden対策として、outlineの方がBingのDOM構造と相性が良い場合がある)
+      // またはBingはoutlineで外側に描画してもクリップされにくい
+      css += `
+        .ngw4b_revealed .ngw4b_hidden {
+          outline: 2px dashed #ff0000 !important;
+          outline-offset: -2px;
+          overflow: visible !important;
+        }
+        .ngw4b_revealed .ngw4b_hidden .ngw4b_hidden {
+          outline: none !important;
+          background-color: transparent !important;
+        }
+      `;
+    } else {
+      // Google: ::after疑似要素を使用 (Googleのカードはoverflow: hiddenやcontainプロパティを持つことが多く、outlineが欠けることがあるため内部描画する)
+      css += `
+        .ngw4b_revealed .ngw4b_hidden::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border: 2px dashed #ff0000;
+          background-color: rgba(255, 0, 0, 0.05);
+          z-index: 2147483640;
+          pointer-events: none;
+          box-sizing: border-box;
+        }
+        .ngw4b_revealed .ngw4b_hidden:has(.ngw4b_hidden)::after {
+          display: none;
+        }
+        /* ネスト回避の予備 */
+        .ngw4b_revealed .ngw4b_hidden .ngw4b_hidden::after {
+          display: none;
+        }
+      `;
+    }
+
+    style.textContent =
+      css +
+      `
       /* ラベル */
-      .ngw4b_revealed .ngw4b_hidden::before {
-        content: "${chrome.i18n.getMessage("ToggleBar_Filtered")}";
+      .ngw4b_filtered_label {
+        display: none;
         position: absolute;
         top: 0;
         left: 0;
         background: #ff0000;
         color: white;
         font-size: 10px;
-        padding: 2px 4px;
-        z-index: 2147483641; /* 枠線より上に */
-        pointer-events: none;
+        font-weight: bold;
+        padding: 2px 6px;
+        z-index: 2147483641;
+        cursor: pointer;
+        border-radius: 0 0 4px 0;
+        pointer-events: auto;
+      }
+      .ngw4b_revealed .ngw4b_filtered_label {
+        display: block !important;
       }
       /* 子孫に.ngw4b_hiddenがある要素はラベルも非表示 */
-      .ngw4b_revealed .ngw4b_hidden:has(.ngw4b_hidden)::before {
-        display: none;
+      .ngw4b_revealed .ngw4b_hidden:has(.ngw4b_hidden) > .ngw4b_filtered_label {
+        display: none !important;
       }
 
       /* Tooltip */
@@ -385,6 +630,75 @@ const NGW4B_UI = {
       #ngw4b_tooltip button:hover {
         background: #c9302c;
       }
+
+      /* Toggle Bar */
+      #ngw4b_toggle_bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 16px;
+        background: rgba(240, 240, 240, 0.95);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid #ccc;
+        font-size: 13px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        z-index: 2147483646;
+      }
+      /* トグルバーが表示されている時はコンテンツを下げる */
+      body:has(#ngw4b_toggle_bar[style*="flex"]) {
+        margin-top: 45px !important;
+      }
+      #ngw4b_bar_count {
+        color: #333;
+        font-weight: 600;
+      }
+      #ngw4b_bar_toggle {
+        background: #d32f2f;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: background 0.2s;
+      }
+      #ngw4b_bar_toggle:hover {
+        background: #b71c1c;
+      }
+      /* 表示モード時は青色 */
+      body.ngw4b_revealed #ngw4b_bar_toggle {
+        background: #0078d4;
+      }
+      body.ngw4b_revealed #ngw4b_bar_toggle:hover {
+        background: #005a9e;
+      }
+      @media (prefers-color-scheme: dark) {
+        #ngw4b_toggle_bar {
+          background: rgba(40, 40, 40, 0.95);
+          border-color: #444;
+        }
+        #ngw4b_bar_count {
+          color: #eee;
+        }
+      }
+      /* モバイル対応 */
+      @media (max-width: 600px) {
+        #ngw4b_toggle_bar {
+          padding: 10px 16px;
+          font-size: 14px;
+        }
+        body:has(#ngw4b_toggle_bar[style*="flex"]) {
+          margin-top: 50px !important;
+        }
+        #ngw4b_bar_toggle {
+          padding: 8px 14px;
+          font-size: 13px;
+        }
+      }
     `;
     document.head.appendChild(style);
   },
@@ -401,8 +715,14 @@ const NGW4B_UI = {
       const target = e.target.closest(".ngw4b_hidden");
       if (target) {
         const word = target.getAttribute("data-ngw4b-word");
-        if (word) {
-          this.showTooltip(e, word, target);
+        if (word && target !== this.currentTarget) {
+          // 既存のタイマーがあればクリア
+          if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
+
+          // 3秒待機してから表示
+          this.tooltipTimeout = setTimeout(() => {
+            this.showTooltip(e, word, target);
+          }, 3000);
         }
       }
     });
@@ -416,6 +736,12 @@ const NGW4B_UI = {
         (related.closest("#ngw4b_tooltip") || related.closest(".ngw4b_hidden"))
       )
         return;
+
+      // タイマーがあればキャンセル
+      if (this.tooltipTimeout) {
+        clearTimeout(this.tooltipTimeout);
+        this.tooltipTimeout = null;
+      }
       this.hideTooltip();
     });
 
@@ -433,8 +759,7 @@ const NGW4B_UI = {
       const words = wordStr.split(",").filter((w) => w);
 
       const renderInitial = () => {
-        const deleteBtnText =
-          chrome.i18n.getMessage("Tooltip_Delete") || "Delete";
+        const deleteBtnText = safeI18n("Tooltip_Delete", "Delete");
         const wordDisplay = words.map((w) => this.escapeHtml(w)).join(", ");
 
         this.tooltipElem.textContent = "";
@@ -472,6 +797,9 @@ const NGW4B_UI = {
       const renderSelection = () => {
         const cancelText =
           chrome.i18n.getMessage("ContextMenu_PopupWindow_No") || "Cancel";
+        const deleteAllText =
+          chrome.i18n.getMessage("Tooltip_DeleteAll") || "Delete All";
+        const deleteLabel = safeI18n("Tooltip_Delete", "Delete");
         this.tooltipElem.textContent = "";
 
         const divWrapper = document.createElement("div");
@@ -491,6 +819,15 @@ const NGW4B_UI = {
           divWrapper.appendChild(btnDel);
         });
 
+        // 全て削除ボタン
+        const btnDeleteAll = document.createElement("button");
+        btnDeleteAll.id = "ngw4b_delete_all_btn";
+        btnDeleteAll.style.background = "#d9534f";
+        btnDeleteAll.style.border = "1px solid #c9302c";
+        btnDeleteAll.style.marginTop = "5px";
+        btnDeleteAll.textContent = deleteAllText;
+        divWrapper.appendChild(btnDeleteAll);
+
         this.tooltipElem.appendChild(divWrapper);
 
         const divBtnArea = document.createElement("div");
@@ -501,6 +838,7 @@ const NGW4B_UI = {
         divBtnArea.appendChild(btnCancel);
         this.tooltipElem.appendChild(divBtnArea);
 
+        // 個別削除ボタン
         this.tooltipElem.querySelectorAll(".ngw4b_del_item").forEach((b) => {
           b.onclick = (evt) => {
             const w = evt.target.getAttribute("data-word");
@@ -512,6 +850,20 @@ const NGW4B_UI = {
             }
           };
         });
+
+        // 全て削除ボタン
+        this.tooltipElem.querySelector("#ngw4b_delete_all_btn").onclick =
+          () => {
+            const deleteConfirmText =
+              chrome.i18n.getMessage("Tooltip_ConfirmDeleteAll") ||
+              "Are you sure you want to delete all %d words?";
+            if (confirm(deleteConfirmText.replace("%d", words.length))) {
+              // 全てのワードを順番に削除
+              words.forEach((w) => this.deleteNGWord(w));
+            }
+          };
+
+        // キャンセルボタン
         this.tooltipElem.querySelector("#ngw4b_cancel_btn").onclick = () => {
           renderInitial();
         };
@@ -619,68 +971,33 @@ const NGW4B_UI = {
   },
 
   deleteNGWord: function (wordToDelete) {
-    chrome.storage.sync.get("ngw4b_nglist", (items) => {
+    storageAPI.get("ngw4b_nglist", (items) => {
       if (items.ngw4b_nglist) {
-        const list = items.ngw4b_nglist.split(/\n/);
-        const newList = list.filter((line) => line.trim() !== wordToDelete);
-        chrome.storage.sync.set({ ngw4b_nglist: newList.join("\n") }, () => {
-          if (typeof NGW4B !== "undefined" && NGW4B.state) {
-            NGW4B.state.ngList = NGW4B.parseNGList(newList.join("\n"));
+        const listText = items.ngw4b_nglist;
+        const newList = listText
+          .split(/\n/)
+          .filter((line) => line.trim() !== wordToDelete);
+        const newListText = newList.join("\n");
+
+        storageAPI.set({ ngw4b_nglist: newListText }, () => {
+          if (typeof NGW4B !== "undefined") {
+            NGW4B.state.ngList = NGW4B.parseNGList(newListText);
+
+            // 全ての隠し要素を一旦リセット
+            document.querySelectorAll(".ngw4b_hidden").forEach((el) => {
+              el.classList.remove("ngw4b_hidden");
+              el.removeAttribute("data-ngw4b-word");
+              el.removeAttribute("data-ngw4b-tipx");
+              el.removeAttribute("data-ngw4b-tipy");
+              const label = el.querySelector(".ngw4b_filtered_label");
+              if (label) label.remove();
+            });
+
+            // 再フィルタリング & カウント更新
+            NGW4B.runFilter();
+            NGW4B.updateCounts();
           }
-
-          const hiddenElems = document.querySelectorAll(".ngw4b_hidden");
-          let recountStart = false;
-
-          hiddenElems.forEach((elem) => {
-            const attr = elem.getAttribute("data-ngw4b-word") || "";
-            let words = attr.split(",").filter((w) => w);
-
-            if (words.includes(wordToDelete)) {
-              words = words.filter((w) => w !== wordToDelete);
-              if (words.length === 0) {
-                elem.classList.remove("ngw4b_hidden");
-                elem.removeAttribute("data-ngw4b-word");
-                elem.removeAttribute("data-ngw4b-tipx");
-                elem.removeAttribute("data-ngw4b-tipy");
-              } else {
-                elem.setAttribute("data-ngw4b-word", words.join(","));
-              }
-              recountStart = true;
-            }
-          });
-
-          if (recountStart && typeof NGW4B !== "undefined") {
-            NGW4B.state.hiddenCount =
-              document.querySelectorAll(".ngw4b_hidden").length;
-            try {
-              chrome.runtime.sendMessage(
-                { action: "updateBadge", count: NGW4B.state.hiddenCount },
-                () => {
-                  if (chrome.runtime.lastError) {
-                  }
-                }
-              );
-            } catch (e) {}
-          }
-
-          // Tooltip update
-          if (
-            this.tooltipElem &&
-            this.tooltipElem.style.display !== "none" &&
-            this.currentTarget
-          ) {
-            const currentAttr =
-              this.currentTarget.getAttribute("data-ngw4b-word");
-            if (!currentAttr) {
-              this.hideTooltip();
-            } else {
-              // Re-render tooltip with remaining words
-              // Pass a dummy event since we don't need position update if already open
-              this.showTooltip({}, currentAttr, this.currentTarget);
-            }
-          } else {
-            this.hideTooltip();
-          }
+          if (this.tooltipElem) this.tooltipElem.style.display = "none";
         });
       }
     });
@@ -697,14 +1014,14 @@ const NGW4B_UI = {
     modal.id = "ngw4b_modal";
 
     const strings = {
-      title: chrome.i18n.getMessage("Name"),
-      message: chrome.i18n.getMessage("ContextMenu_PopupWindow_Message"),
-      add: chrome.i18n.getMessage("ContextMenu_PopupWindow_Yes") || "Add",
-      cancel: chrome.i18n.getMessage("ContextMenu_PopupWindow_No") || "Cancel",
-      optNoTitle: chrome.i18n.getMessage("Option_NoTitle"),
-      optNoSite: chrome.i18n.getMessage("Option_NoSite"),
-      optNoDesc: chrome.i18n.getMessage("Option_NoDesc"),
-      optRegex: chrome.i18n.getMessage("ContextMenu_PopupWindow_CheckboxRegex"),
+      title: safeI18n("Name"),
+      message: safeI18n("ContextMenu_PopupWindow_Message"),
+      add: safeI18n("ContextMenu_PopupWindow_Yes", "Add"),
+      cancel: safeI18n("ContextMenu_PopupWindow_No", "Cancel"),
+      optNoTitle: safeI18n("Option_NoTitle"),
+      optNoSite: safeI18n("Option_NoSite"),
+      optNoDesc: safeI18n("Option_NoDesc"),
+      optRegex: safeI18n("ContextMenu_PopupWindow_CheckboxRegex"),
     };
 
     const styleElem = document.createElement("style");
@@ -810,7 +1127,7 @@ const NGW4B_UI = {
       if (chks.regex.checked) opts.push("regex");
       if (opts.length > 0) val += `[${opts.join(",")}]`;
 
-      chrome.storage.sync.get("ngw4b_nglist", (items) => {
+      storageAPI.get("ngw4b_nglist", (items) => {
         if (chrome.runtime.lastError) {
           console.error("Storage Get Error:", chrome.runtime.lastError);
           alert("Error loading settings: " + chrome.runtime.lastError.message);
@@ -822,7 +1139,7 @@ const NGW4B_UI = {
         list += val;
         list = [...new Set(list.split("\n"))].join("\n");
 
-        chrome.storage.sync.set({ ngw4b_nglist: list }, () => {
+        storageAPI.set({ ngw4b_nglist: list }, () => {
           if (chrome.runtime.lastError) {
             console.error("Storage Set Error:", chrome.runtime.lastError);
             alert("Error saving settings: " + chrome.runtime.lastError.message);
@@ -857,6 +1174,14 @@ const NGW4B_Blocker = {
     if (!element.classList.contains("ngw4b_hidden")) {
       element.classList.add("ngw4b_hidden");
       element.setAttribute("data-ngw4b-word", originalWord);
+
+      // ラベル挿入
+      if (!element.querySelector(".ngw4b_filtered_label")) {
+        const label = document.createElement("span");
+        label.className = "ngw4b_filtered_label";
+        label.textContent = safeI18n("ToggleBar_Filtered", "Filtered");
+        element.insertBefore(label, element.firstChild);
+      }
     } else {
       const current = element.getAttribute("data-ngw4b-word") || "";
       const words = current.split(",").filter((w) => w);
@@ -870,84 +1195,92 @@ const NGW4B_Blocker = {
   blockMain: function (word, isRegex, options, originalWord) {
     const { noTitle, noSite, noDesc } = options;
 
+    // 正規表現パターンを作成（非正規表現ワードも正規表現として処理）
+    let pattern;
     if (isRegex) {
-      const regexPattern = new RegExp(word, "i");
-      // ドキュメント全体ではなく、ターゲット候補のコンテナのみをループする (大幅な高速化)
-      const targets = document.querySelectorAll(
-        "li.b_algo, li.b_top, div.b_top, div.slide, div.na_card_wrp, div.mmlp, div.dg_u, div.mc_fgvc_u, li.b_ans, div.b_ans"
-      );
+      pattern = new RegExp(word, "i");
+    } else {
+      // 特殊文字をエスケープして正規表現として使用（大文字小文字無視）
+      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      pattern = new RegExp(escaped, "i");
+    }
 
-      targets.forEach((target) => {
-        // 既に隠されている要素はスキップ
-        if (target.classList.contains("ngw4b_hidden")) return;
+    // ターゲット候補のセレクタ（動画カルーセル追加）
+    const targets = document.querySelectorAll(
+      // Bing 通常結果
+      "li.b_algo, li.b_top, div.b_top, div.slide, div.na_card_wrp, li.b_ans, div.b_ans, " +
+        // Bing 動画カルーセル
+        "div.mc_vtvc, div.dg_u, div.mc_fgvc_u, div.mmlp, div.vr_slider_item, " +
+        // Google 通常結果
+        ".MjjYud, .gxN69b, .Mn67ub, .uM6Prb, .t78FBb, .K979F, div[data-hveid], .j039Wc, .Gx5Zad, .xpd, " +
+        // Google 動画カルーセル
+        ".rIRoqf, .hXY9cf, .VibNM, .g, div.sHEJob"
+    );
 
-        // コンテナ内の評価対象要素を取得 (範囲限定)
-        const elems = target.querySelectorAll("h2, p, a, div, span, cite");
+    targets.forEach((target) => {
+      // 既に隠されている要素でも、追加のNGワードをチェック（複数ワード表示のため）
 
-        for (const elem of elems) {
-          if (this.checkContextMatch(elem, regexPattern, options)) {
+      // タイトル判定（動画のaria-label含む）
+      if (!noTitle) {
+        // 通常のタイトル要素 + Google動画タイトル(.cHaqb)
+        const titleElems = target.querySelectorAll(
+          "h2, h3, [role='heading'], a[data-ved], .DKV0Md, .fc9yUc, .LC20lb, span.cHaqb"
+        );
+        for (const elem of titleElems) {
+          const text =
+            elem.textContent || elem.getAttribute("aria-label") || "";
+          if (pattern.test(text)) {
             this.hideElement(target, originalWord);
-            break; // 1つでもマッチすればこのカードは非表示確定
+            return;
           }
         }
-      });
-    } else {
-      // XPath構築
-      const wordL = word.toLowerCase();
-      // XPath 1.0 小文字変換ハック
-      const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-      const lower = "abcdefghijklmnopqrstuvwxyz";
-      const translate = `translate(text(), '${upper}', '${lower}')`;
-      const contains = `contains(${translate}, '${wordL}')`;
 
-      // 簡易実装: クエリーが複雑になるため、主要なターゲット毎に処理
-      // タイトル
-      if (!noTitle) {
-        this.xpathHide(
-          `//li[contains(@class,'b_algo') or contains(@class,'b_top') or contains(@class,'b_ans')]//h2//a[${contains}]`,
-          originalWord
-        );
-        this.xpathHide(
-          `//li[contains(@class,'b_algo') or contains(@class,'b_top') or contains(@class,'b_ans')]//h2//a[contains(translate(@aria-label,'${upper}','${lower}'), '${wordL}')]`,
-          originalWord
-        );
-        // div.b_ans内のタイトル (h2の場合が多い)
-        this.xpathHide(
-          `//div[contains(@class,'b_ans')]//h2[${contains}]`,
-          originalWord
-        );
+        // 動画カルーセル用: コンテナ自体のaria-labelをチェック（Google動画対応）
+        const containerAriaLabel = target.getAttribute("aria-label") || "";
+        if (containerAriaLabel && pattern.test(containerAriaLabel)) {
+          this.hideElement(target, originalWord);
+          return;
+        }
       }
-      // サイト
+
+      // サイト判定
       if (!noSite) {
-        this.xpathHide(
-          `//li[contains(@class,'b_algo') or contains(@class,'b_top') or contains(@class,'b_ans')]//cite[${contains}]`,
-          originalWord
+        // Google動画のチャンネル名/サイト名(.Sg4azc span)を追加
+        const siteElems = target.querySelectorAll(
+          "cite, .b_attribution, .VuuXrf, .NJjxre, .qLRx3b, .Sg4azc span, .Sg4azc"
         );
-        this.xpathHide(
-          `//li[contains(@class,'b_algo') or contains(@class,'b_top') or contains(@class,'b_ans')]//div[contains(@class,'b_attribution')][${contains}]`,
-          originalWord
-        );
-        this.xpathHide(
-          `//div[contains(@class,'b_ans')]//cite[${contains}]`,
-          originalWord
-        );
+        for (const elem of siteElems) {
+          if (pattern.test(elem.textContent)) {
+            this.hideElement(target, originalWord);
+            return;
+          }
+        }
       }
-      // 説明
+
+      // 説明文判定（日本語対応のメイン修正箇所）
       if (!noDesc) {
-        this.xpathHide(
-          `//li[contains(@class,'b_algo') or contains(@class,'b_top') or contains(@class,'b_ans')]//div[contains(@class,'b_caption')]//p[${contains}]`,
-          originalWord
+        // Bing説明文: .b_caption直下のテキストもチェック
+        const captionDiv = target.querySelector(".b_caption");
+        if (captionDiv && pattern.test(captionDiv.textContent)) {
+          this.hideElement(target, originalWord);
+          return;
+        }
+
+        // 詳細な説明文要素
+        const descElems = target.querySelectorAll(
+          // Bing 説明文
+          ".b_caption p, .b_caption div, .b_snippet, p.b_algoSlug, .b_lineclamp2, .b_lineclamp3, .b_paractl, " +
+            // Google 説明文
+            ".VwiC3b, .lyLwlc, .yXK7lf, .MUxGbd, .yDYNvb, span[data-content-feature]"
         );
-        this.xpathHide(
-          `//li[contains(@class,'b_algo') or contains(@class,'b_top') or contains(@class,'b_ans')]//p[not(contains(@class,'na_t'))][${contains}]`,
-          originalWord
-        );
-        this.xpathHide(
-          `//div[contains(@class,'b_ans')]//div[contains(@class,'b_caption')]//p[${contains}]`,
-          originalWord
-        );
+        for (const elem of descElems) {
+          if (pattern.test(elem.textContent)) {
+            this.hideElement(target, originalWord);
+            return;
+          }
+        }
       }
-    }
+    });
   },
 
   checkContextMatch: function (elem, regex, options) {
@@ -1025,7 +1358,7 @@ const NGW4B_Blocker = {
     // ビデオなどは mmlp, dg_u, slide
     // 通常検索は li.b_algo, li.b_top, div.b_top, div.na_card_wrp, li.b_ans, div.b_ans
     const target = elem.closest(
-      "li.b_algo, li.b_top, div.b_top, div.slide, div.na_card_wrp, div.mmlp, div.dg_u, div.mc_fgvc_u, li.b_ans, div.b_ans"
+      "li.b_algo, li.b_top, div.b_top, div.slide, div.na_card_wrp, div.mmlp, div.dg_u, div.mc_fgvc_u, li.b_ans, div.b_ans, .MjjYud, .gxN69b, .Mn67ub, .uM6Prb, .t78FBb, .K979F, div[data-hveid], .j039Wc, .Gx5Zad, .xpd"
     );
     // if (target && (target.classList.contains("b_ans") || target.closest(".b_ans"))) return null;
     return target;
@@ -1177,29 +1510,65 @@ const NGW4B_Blocker = {
   blockVideos: function (word, isRegex, options, originalWord) {
     const { noTitle, noSite } = options;
 
-    // ユーザー指定のカスタムロジック
-    // ターゲット: div.mmlp, div.mc_fgvc_u, div.slide (ユーザー要望の拡張)
-    // タイトル: .mc_vtvc_title (title属性)
-    // メタ/サイト: .mc_vtvc_meta_row (子孫要素)
-    // 要望: "動画タイトルやサイト名・チャンネル名を検査して、引っかかったものはサムネごと消して、スペースを詰めて表示してほしい"
+    // Bing動画検索用のフィルタリング
+    const regex = isRegex ? new RegExp(word, "i") : null;
+    const wordL = isRegex ? null : word.toLowerCase();
 
+    const check = (text) => {
+      if (!text) return false;
+      return isRegex ? regex.test(text) : text.toLowerCase().includes(wordL);
+    };
+
+    // 1. c4r4コンテナ（人気の動画など）内の個別カードを処理
+    const c4r4Containers = document.querySelectorAll("div.mmlp.c4r4");
+    c4r4Containers.forEach((container) => {
+      const innerCards = container.querySelectorAll("div.mc_vtvc_cc");
+      innerCards.forEach((card) => {
+        let matched = false;
+
+        // タイトルチェック
+        if (!noTitle) {
+          const titleElem = card.querySelector(".mc_vtvc_title");
+          if (titleElem) {
+            const titleVal = titleElem.getAttribute("title");
+            if (check(titleVal)) matched = true;
+          }
+        }
+
+        // サイト/チャンネル名チェック
+        if (!noSite && !matched) {
+          const metaRow = card.querySelector(".mc_vtvc_meta_row");
+          if (metaRow) {
+            if (check(metaRow.textContent)) matched = true;
+          }
+        }
+
+        if (matched) {
+          this.hideElement(card, originalWord);
+        }
+      });
+
+      // c4r4コンテナ内の全カードが非表示になった場合、コンテナ自体も非表示
+      const allCards = container.querySelectorAll("div.mc_vtvc_cc");
+      const hiddenCards = container.querySelectorAll(
+        "div.mc_vtvc_cc.ngw4b_hidden"
+      );
+      if (allCards.length > 0 && allCards.length === hiddenCards.length) {
+        this.hideElement(container, originalWord);
+      }
+    });
+
+    // 2. 通常の動画カード（c4r4ではないmmlpや他のカード）を処理
     const candidates = document.querySelectorAll(
-      "div.mmlp, div.mc_fgvc_u, div.slide"
+      "div.mc_vtvc_b, div.mc_fgvc_u, div.dg_u, div.mmlp:not(.c4r4)"
     );
 
     candidates.forEach((card) => {
-      if (card.classList.contains("ngw4b_hidden")) return;
+      // 複数ワード蓄積のため、既に隠されている要素もチェック
 
       let matched = false;
-      const regex = isRegex ? new RegExp(word, "i") : null;
-      const wordL = isRegex ? null : word.toLowerCase();
 
-      const check = (text) => {
-        if (!text) return false;
-        return isRegex ? regex.test(text) : text.toLowerCase().includes(wordL);
-      };
-
-      // 1. mc_vtvc_title の title属性
+      // タイトルチェック
       if (!noTitle) {
         const titleElem = card.querySelector(".mc_vtvc_title");
         if (titleElem) {
@@ -1208,34 +1577,17 @@ const NGW4B_Blocker = {
         }
       }
 
-      // 2. mc_vtvc_meta_row の子孫要素
+      // サイト/チャンネル名チェック
       if (!noSite && !matched) {
         const metaRow = card.querySelector(".mc_vtvc_meta_row");
         if (metaRow) {
-          // テキスト全体、あるいは画像のaltなどを対象にする
-          // "子孫要素の属性値やテキスト" とのことなので、textContent + 代表的な属性をチェック
           if (check(metaRow.textContent)) matched = true;
-          // 必要であれば属性チェックも追加(img altなど)
         }
       }
 
       if (matched) {
         this.hideElement(card, originalWord);
       }
-    });
-
-    // 既存の汎用ロジック (mmlp以外のレイアウト用 - div.dg_uなど)
-    const otherSelector = "div.dg_u:not(.mmlp)";
-    document.querySelectorAll(otherSelector).forEach((item) => {
-      if (item.classList.contains("ngw4b_hidden")) return;
-      // ... (既存ロジック: 簡易実装) ...
-      const regex = isRegex ? new RegExp(word, "i") : null;
-      const wordL = isRegex ? null : word.toLowerCase();
-      const text = item.textContent;
-      const check = (val) =>
-        isRegex ? regex.test(val) : val.toLowerCase().includes(wordL);
-
-      if (check(text)) this.hideElement(item, originalWord);
     });
   },
 
@@ -1287,21 +1639,23 @@ const NGW4B_Blocker = {
     // ショッピング検索時は専用ロジックに任せ、汎用div.gロジックは誤爆(YjPgVd等のコンテナ非表示)を防ぐためスキップ
     if (NGW4B.state.google_main && !isShopSearch) {
       const candidates = document.querySelectorAll(
-        "div.g, div.SoaBEf, g-card, div.n0jPhd, div.MjjYud > div"
+        "div.g, div.SoaBEf, g-card, div.n0jPhd, div.MjjYud > div, .Gx5Zad, .xpd, div.sHEJob"
       );
 
       candidates.forEach((card) => {
-        if (card.classList.contains("ngw4b_hidden")) return;
-        if (card.closest(".ngw4b_hidden")) return; // 親が隠れていればスキップ
+        // 親が隠れていればスキップ（重複処理防止）
+        if (
+          card.closest(".ngw4b_hidden") &&
+          card.closest(".ngw4b_hidden") !== card
+        )
+          return;
 
-        // ニュース系カードの場合は checkCardText を利用して包括的にチェック
-        if (card.matches("div.SoaBEf, g-card, div.n0jPhd")) {
-          // メイン検索結果に混じるニュース枠は google_news オプションではなく google_main で制御すべきか？
-          // ここではユーザーの意図として、メイン検索結果全体を google_main で制御し、
-          // ニュース専用タブや専用枠は google_news で制御すると解釈するのが自然。
-          // ただし "Top Stories" などは google_news の設定を見るべきかもしれない。
-          // 今回の仕様では明確な分離が指示されていないため、div.g の流れで google_main に含める。
-          // もし厳密に分けるならここで分岐が必要。
+        // モバイル版やニュース系カード、動画カードの場合は checkCardText を利用して包括的にチェック
+        if (
+          card.matches(
+            "div.SoaBEf, g-card, div.n0jPhd, .Gx5Zad, .xpd, div.sHEJob"
+          )
+        ) {
           this.checkCardText(
             card,
             check,
@@ -1315,16 +1669,16 @@ const NGW4B_Blocker = {
 
         let matched = false;
 
-        // タイトル (h3)
+        // タイトル (h3, span.cHaqb)
         if (!noTitle) {
-          const title = card.querySelector("h3")?.textContent;
+          const title = card.querySelector("h3, span.cHaqb")?.textContent;
           if (check(title)) matched = true;
         }
 
-        // サイト (cite, .TbwUpd, .VuuXrf)
+        // サイト (cite, .TbwUpd, .VuuXrf, .Sg4azc)
         if (!noSite && !matched) {
           const site = card.querySelector(
-            "cite, .TbwUpd, .VuuXrf"
+            "cite, .TbwUpd, .VuuXrf, .Sg4azc"
           )?.textContent;
           if (check(site)) matched = true;
         }
@@ -1507,9 +1861,7 @@ const NGW4B_Blocker = {
     );
 
     videoCards.forEach((card) => {
-      // 既に非表示の場合はスキップ
-      if (card.classList.contains("ngw4b_hidden")) return;
-      if (card.closest(".ngw4b_hidden")) return; // 親が隠れていればスキップ
+      // 複数ワード蓄積のため、既に隠されている要素もチェック
       // ヘッダー/ナビ内はスキップ（二重チェック）
       if (card.closest("header, nav, #gb, #searchform")) return;
 
@@ -1686,9 +2038,8 @@ const NGW4B_Blocker = {
 
       const parent = node.parentElement;
 
-      // 既に非表示の要素内、またはスクリプト/スタイルタグ内は無視
+      // スクリプト/スタイルタグ内は無視
       if (
-        parent.closest(".ngw4b_hidden") ||
         parent.tagName === "SCRIPT" ||
         parent.tagName === "STYLE" ||
         parent.tagName === "NOSCRIPT"
@@ -1696,14 +2047,14 @@ const NGW4B_Blocker = {
         continue;
 
       // コンテキスト判定
-      // タイトル: h系, role=heading, aria-level
+      // タイトル: h系, role=heading, aria-level, span.cHaqb (Google動画タイトル)
       const isTitle = parent.closest(
-        "h3, h4, h2, [role='heading'], [aria-level]"
+        "h3, h4, h2, [role='heading'], [aria-level], span.cHaqb"
       );
 
-      // サイト/時間: cite, time, 日付関連属性, ソース関連領域
+      // サイト/時間: cite, time, .Sg4azc (Google動画チャンネル名)
       // Google Newsでは time タグや cite タグが使われることが多い
-      const isSite = parent.closest("cite, time");
+      const isSite = parent.closest("cite, time, .Sg4azc");
 
       let matched = false;
 
@@ -1727,8 +2078,4 @@ const NGW4B_Blocker = {
 };
 
 // 起動
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => NGW4B.init());
-} else {
-  NGW4B.init();
-}
+NGW4B.init();

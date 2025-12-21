@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="/css/options.css" />
-    <script src="/js/options.js" defer></script>
+    <link rel="stylesheet" href="../css/options.css" />
+    <script src="../js/options.js" defer></script>
     <title id="PageTitle">Keywords blocker for Bing - Options</title>
   </head>
 
@@ -20,6 +20,7 @@
         <div class="card-body">
           <textarea name="nglist" id="nglist" rows="15"></textarea>
           <div class="actions">
+            <button id="btn_undo_nglist" class="secondary-btn">Undo</button>
             <button id="btn_save_nglist" class="primary-btn">
               Save NG List
             </button>
@@ -110,10 +111,16 @@
                 ><input type="checkbox" id="chk_google_main" />
                 <span id="Label_Main_Google">Main</span></label
               >
-              <label
-                ><input type="checkbox" id="chk_google_video" />
-                <span id="Label_Video_Google">Video</span></label
-              >
+              <div class="sub-options-row">
+                <label
+                  ><input type="checkbox" id="chk_google_video" />
+                  <span id="Label_Video_Google">Video</span></label
+                >
+                <label
+                  ><input type="checkbox" id="chk_google_shorts" />
+                  <span id="Label_Shorts_Google">Shorts</span></label
+                >
+              </div>
               <label
                 ><input type="checkbox" id="chk_google_image" />
                 <span id="Label_Image_Google">Image</span></label
@@ -122,14 +129,16 @@
                 ><input type="checkbox" id="chk_google_shop" />
                 <span id="Label_Shop_Google">Shopping</span></label
               >
-              <label
-                ><input type="checkbox" id="chk_google_news" />
-                <span id="Label_News_Google">News</span></label
-              >
-              <label
-                ><input type="checkbox" id="chk_google_shorts" />
-                <span id="Label_Shorts_Google">Shorts</span></label
-              >
+              <div class="sub-options-row">
+                <label
+                  ><input type="checkbox" id="chk_google_news" />
+                  <span id="Label_News_Google">News (Search)</span></label
+                >
+                <label
+                  ><input type="checkbox" id="chk_google_news_site" />
+                  <span id="Label_GoogleNews">Google News</span></label
+                >
+              </div>
             </div>
           </div>
         </div>

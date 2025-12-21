@@ -1,5 +1,17 @@
 "use strict";
 
+// Compatibility layer
+const browserAPI = typeof chrome !== "undefined" ? chrome : browser;
+const storageAPI = (browserAPI.storage &&
+  (browserAPI.storage.sync || browserAPI.storage.local)) || {
+  get: (d, cb) => cb(d),
+  set: (d, cb) => cb && cb(),
+};
+
+if (typeof chrome === "undefined") {
+  window.chrome = browserAPI;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initializeToggleSwitch();
   initializeOptionsButton();
@@ -41,11 +53,11 @@ function updateBlockCount() {
 
 // トグルスイッチとステータス表示の初期化
 function initializeToggleSwitch() {
-  chrome.storage.sync.get("ngw4b_status", function (items) {
+  storageAPI.get("ngw4b_status", function (items) {
     let status = items.ngw4b_status;
     if (status === undefined) {
       status = true;
-      chrome.storage.sync.set({ ngw4b_status: status });
+      storageAPI.set({ ngw4b_status: status });
     }
 
     const toggleSwitch = document.getElementById("toggleSwitch");
@@ -67,7 +79,7 @@ function initializeToggleSwitch() {
     toggleSwitch.addEventListener("change", function () {
       const newStatus = this.checked;
       updateStatusText(newStatus);
-      chrome.storage.sync.set({ ngw4b_status: newStatus }, () => {
+      storageAPI.set({ ngw4b_status: newStatus }, () => {
         // 設定保存後、少し待ってから状態更新を試みる（フォールバック）
         // 主にコンテンツスクリプトからのメッセージで更新されるが、念のため
         setTimeout(updateBlockCount, 500);
@@ -96,7 +108,28 @@ function initializeOptionsButton() {
     optBtn.textContent = chrome.i18n.getMessage("PopupOptBtn");
     optBtn.onclick = (e) => {
       e.preventDefault();
-      chrome.runtime.openOptionsPage();
+      // Android Firefoxでは openOptionsPage が動作しない場合がある
+      // フォールバックとして tabs.create を使用
+      if (typeof chrome.runtime.openOptionsPage === "function") {
+        try {
+          chrome.runtime.openOptionsPage(() => {
+            if (chrome.runtime.lastError) {
+              // フォールバック: 直接URLを開く
+              openOptionsPageFallback();
+            }
+          });
+        } catch (err) {
+          openOptionsPageFallback();
+        }
+      } else {
+        openOptionsPageFallback();
+      }
     };
   }
+}
+
+// オプションページを直接開くフォールバック
+function openOptionsPageFallback() {
+  const optionsUrl = browserAPI.runtime.getURL("html/options.html");
+  browserAPI.tabs.create({ url: optionsUrl });
 }

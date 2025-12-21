@@ -56,6 +56,12 @@
   "Tooltip_ConfirmDelete": {
     "message": "本当に「%s」を削除しますか？"
   },
+  "Tooltip_DeleteAll": {
+    "message": "全て削除"
+  },
+  "Tooltip_ConfirmDeleteAll": {
+    "message": "本当に %d 件のワードを全て削除しますか？"
+  },
   "PopupStatusEnabled": {
     "message": "有効"
   },
@@ -88,5 +94,35 @@
   },
   "Option_PageTitle": {
     "message": "設定"
+  },
+  "Option_Undo": {
+    "message": "元に戻す"
+  },
+  "Option_Restored": {
+    "message": "復元しました"
+  },
+  "Label_Main": {
+    "message": "通常検索"
+  },
+  "Label_Video": {
+    "message": "動画"
+  },
+  "Label_Image": {
+    "message": "画像"
+  },
+  "Label_Shop": {
+    "message": "ショッピング"
+  },
+  "Label_News": {
+    "message": "ニュース"
+  },
+  "Label_Shorts": {
+    "message": "ショート動画"
+  },
+  "Label_News_Search": {
+    "message": "ニュース（検索結果）"
+  },
+  "Label_GoogleNews": {
+    "message": "Googleニュース"
   }
 }

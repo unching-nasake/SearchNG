@@ -53,6 +53,12 @@
   "Tooltip_ConfirmDelete": {
     "message": "Are you sure you want to delete '%s'?"
   },
+  "Tooltip_DeleteAll": {
+    "message": "Delete All"
+  },
+  "Tooltip_ConfirmDeleteAll": {
+    "message": "Are you sure you want to delete all %d words?"
+  },
   "PopupStatusEnabled": {
     "message": "Enabled"
   },
@@ -85,5 +91,35 @@
   },
   "Option_PageTitle": {
     "message": "Options"
+  },
+  "Option_Undo": {
+    "message": "Undo"
+  },
+  "Option_Restored": {
+    "message": "Restored"
+  },
+  "Label_Main": {
+    "message": "Main"
+  },
+  "Label_Video": {
+    "message": "Video"
+  },
+  "Label_Image": {
+    "message": "Image"
+  },
+  "Label_Shop": {
+    "message": "Shopping"
+  },
+  "Label_News": {
+    "message": "News"
+  },
+  "Label_Shorts": {
+    "message": "Shorts"
+  },
+  "Label_News_Search": {
+    "message": "News (Search)"
+  },
+  "Label_GoogleNews": {
+    "message": "Google News"
   }
 }

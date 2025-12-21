@@ -1,5 +1,16 @@
 "use strict";
 
+const browserAPI = typeof chrome !== "undefined" ? chrome : browser;
+const storageAPI = (browserAPI.storage &&
+  (browserAPI.storage.sync || browserAPI.storage.local)) || {
+  get: (d, cb) => cb(d),
+  set: (d, cb) => cb && cb(),
+};
+
+if (typeof chrome === "undefined") {
+  window.chrome = browserAPI;
+}
+
 // MV3とMV2の互換性維持（Action API）
 // MV3: chrome.action, MV2: chrome.browserAction
 const actionAPI =
@@ -116,7 +127,7 @@ function initStatus() {
     google_shorts: true,
   };
 
-  chrome.storage.sync.get(null, (items) => {
+  storageAPI.get(null, (items) => {
     // エラーチェック
     if (chrome.runtime.lastError) {
       console.error("Failed to get storage:", chrome.runtime.lastError);
@@ -136,7 +147,7 @@ function initStatus() {
 
     // 更新が必要な場合のみ保存
     if (needsUpdate) {
-      chrome.storage.sync.set(newSettings, () => {
+      storageAPI.set(newSettings, () => {
         if (chrome.runtime.lastError) {
           console.error(
             "Failed to initialize settings:",
@@ -183,7 +194,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const tabId = sender.tab?.id;
 
     if (tabId) {
-      chrome.storage.sync.get("ngw4b_status", (items) => {
+      storageAPI.get("ngw4b_status", (items) => {
         const isEnabled = items.ngw4b_status !== false;
         updateBadgeState(isEnabled, tabId, count);
       });
@@ -196,7 +207,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 chrome.tabs.onActivated.addListener((activeInfo) => {
   // バッジはタブごとに保持されるため、特別なリセットは不要だが
   // ステータス無効時のOFF表示を確実にするならここで再設定も可
-  chrome.storage.sync.get("ngw4b_status", (items) => {
+  storageAPI.get("ngw4b_status", (items) => {
     const isEnabled = items.ngw4b_status !== false;
     if (!isEnabled) {
       updateBadgeState(false, activeInfo.tabId);
@@ -214,7 +225,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }
     });
 
-    chrome.storage.sync.get("ngw4b_status", (items) => {
+    storageAPI.get("ngw4b_status", (items) => {
       const isEnabled = items.ngw4b_status !== false;
       if (!isEnabled) {
         updateBadgeState(false, tabId);

@@ -1,7 +1,23 @@
 "use strict";
 
+// Compatibility layer for different browsers and platforms
+const browserAPI = typeof chrome !== "undefined" ? chrome : browser;
+
+// Fallback for storage.sync if it's not available (common in some mobile/Firefox environments)
+const storageAPI = (browserAPI.storage &&
+  (browserAPI.storage.sync || browserAPI.storage.local)) || {
+  get: (d, cb) => cb(d),
+  set: (d, cb) => cb && cb(),
+};
+
+// Replace global chrome usage for better reliability
+if (typeof chrome === "undefined") {
+  window.chrome = browserAPI;
+}
+
 const textarea_nglist = document.getElementById("nglist");
 const btn_save_nglist = document.getElementById("btn_save_nglist");
+const btn_undo_nglist = document.getElementById("btn_undo_nglist");
 const save_status = document.getElementById("save_status");
 
 const chk_bing = document.getElementById("chk_enable_bing");
@@ -21,6 +37,7 @@ const chk_google_image = document.getElementById("chk_google_image");
 const chk_google_shop = document.getElementById("chk_google_shop");
 
 const chk_google_news = document.getElementById("chk_google_news");
+const chk_google_news_site = document.getElementById("chk_google_news_site");
 const chk_google_shorts = document.getElementById("chk_google_shorts");
 
 let isDirty = false;
@@ -40,7 +57,7 @@ const showStatus = (msg, type = "success") => {
 // NGリスト専用保存処理 (Manual Save)
 const save_nglist = () => {
   const nglist = textarea_nglist.value;
-  chrome.storage.sync.set({ ngw4b_nglist: nglist }, () => {
+  storageAPI.set({ ngw4b_nglist: nglist }, () => {
     isDirty = false;
     showStatus(chrome.i18n.getMessage("Option_Saved") || "Saved", "success");
     if (btn_save_nglist) btn_save_nglist.disabled = true;
@@ -68,9 +85,12 @@ const save_preferences = () => {
   const googleShop = chk_google_shop ? chk_google_shop.checked : true;
 
   const googleNews = chk_google_news ? chk_google_news.checked : true;
+  const googleNewsSite = chk_google_news_site
+    ? chk_google_news_site.checked
+    : true;
   const googleShorts = chk_google_shorts ? chk_google_shorts.checked : true;
 
-  chrome.storage.sync.set(
+  storageAPI.set(
     {
       // ngw4b_nglist: nglist, // Excluded from auto-save
       enabled_bing: enableBing,
@@ -86,6 +106,7 @@ const save_preferences = () => {
       google_shop: googleShop,
 
       google_news: googleNews,
+      google_news_site: googleNewsSite,
       google_shorts: googleShorts,
     },
     () => {
@@ -103,7 +124,7 @@ const save_preferences = () => {
 const save_options = save_preferences;
 
 const restore_options = () => {
-  chrome.storage.sync.get(
+  storageAPI.get(
     {
       ngw4b_nglist: "",
       enabled_bing: true,
@@ -118,6 +139,7 @@ const restore_options = () => {
       google_image: true,
       google_shop: true,
       google_news: true,
+      google_news_site: true,
     },
     (items) => {
       if (textarea_nglist) textarea_nglist.value = items.ngw4b_nglist;
@@ -137,6 +159,8 @@ const restore_options = () => {
       if (chk_google_shop) chk_google_shop.checked = items.google_shop;
 
       if (chk_google_news) chk_google_news.checked = items.google_news;
+      if (chk_google_news_site)
+        chk_google_news_site.checked = items.google_news_site !== false;
       if (chk_google_shorts)
         chk_google_shorts.checked = items.google_shorts !== false;
     }
@@ -149,7 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
   restore_options();
 
   // Restore height
-  chrome.storage.sync.get(["ngw4b_nglist_height"], function (items) {
+  storageAPI.get(["ngw4b_nglist_height"], function (items) {
     if (items.ngw4b_nglist_height !== undefined && textarea_nglist) {
       textarea_nglist.style.height = items.ngw4b_nglist_height;
     }
@@ -213,7 +237,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setLabel("Label_Video_Google", "動画");
   setLabel("Label_Image_Google", "画像");
   setLabel("Label_Shop_Google", "ショッピング");
-  setLabel("Label_News_Google", "ニュース");
+  setLabel("Label_News_Google", "ニュース（検索結果）");
+  setLabel("Label_GoogleNews", "Googleニュース");
   setLabel("Label_Shorts_Google", "ショート動画");
 
   // Event Listeners
@@ -235,11 +260,33 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const isAndroid = /Android/i.test(navigator.userAgent);
+
   if (btn_save_nglist) {
     btn_save_nglist.addEventListener("click", save_nglist);
-    btn_save_nglist.textContent =
-      (chrome.i18n.getMessage("Option_Save") || "Save") + " (Ctrl+Enter)"; // i18n key might need addition
-    btn_save_nglist.disabled = true; // Initially disabled until changed
+    const saveLabel = chrome.i18n.getMessage("Option_Save") || "Save";
+    btn_save_nglist.textContent = isAndroid
+      ? saveLabel
+      : saveLabel + " (Ctrl+Enter)";
+    btn_save_nglist.disabled = true;
+  }
+
+  if (btn_undo_nglist) {
+    btn_undo_nglist.textContent =
+      chrome.i18n.getMessage("Option_Undo") || "Undo";
+    btn_undo_nglist.addEventListener("click", () => {
+      storageAPI.get({ ngw4b_nglist: "" }, (items) => {
+        if (textarea_nglist) {
+          textarea_nglist.value = items.ngw4b_nglist;
+          isDirty = false;
+          if (btn_save_nglist) btn_save_nglist.disabled = true;
+          showStatus(
+            chrome.i18n.getMessage("Option_Restored") || "Restored",
+            "success"
+          );
+        }
+      });
+    });
   }
 
   // check boxes listeners (auto save)
@@ -260,6 +307,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (chk_google_shop) chk_google_shop.addEventListener("change", save_options);
 
   if (chk_google_news) chk_google_news.addEventListener("change", save_options);
+  if (chk_google_news_site)
+    chk_google_news_site.addEventListener("change", save_options);
   if (chk_google_shorts)
     chk_google_shorts.addEventListener("change", save_options);
 
@@ -270,7 +319,7 @@ document.addEventListener("DOMContentLoaded", () => {
       for (const entry of entries) {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
-          chrome.storage.sync.set({
+          storageAPI.set({
             ngw4b_nglist_height: entry.target.style.height,
           });
         }, 500);
@@ -328,6 +377,8 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
       chk_google_shop.checked = changes.google_shop.newValue;
     if (changes.google_news && chk_google_news)
       chk_google_news.checked = changes.google_news.newValue;
+    if (changes.google_news_site && chk_google_news_site)
+      chk_google_news_site.checked = changes.google_news_site.newValue;
     if (changes.google_shorts && chk_google_shorts)
       chk_google_shorts.checked = changes.google_shorts.newValue;
   }

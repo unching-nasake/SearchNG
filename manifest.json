@@ -1,6 +1,6 @@
 {
   "name": "__MSG_Name__",
-  "version": "1.0",
+  "version": "1.0.1",
   "manifest_version": 3,
   "permissions": [
     "activeTab",
@@ -33,9 +33,7 @@
         "https://www.google.co.jp/search?*",
         "https://news.google.com/*"
       ],
-      "js": [
-        "/js/content.js"
-      ],
+      "js": ["/js/content.js"],
       "run_at": "document_start"
     }
   ]
