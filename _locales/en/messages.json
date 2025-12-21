@@ -1,18 +1,18 @@
 {
   "Name": {
-    "message": "SearchNG"
+    "message": "SearchFilter"
   },
   "Description": {
     "message": "Excludes search results containing the set keywords from Bing and Google."
   },
   "NGListHeader": {
-    "message": "NG Word List (Separated by line breaks)"
+    "message": "Blocked words (Separated by line breaks)"
   },
   "ContextMenuLabel": {
-    "message": "Add selected text to NG list"
+    "message": "Add selected text to blocked words"
   },
   "ContextMenu_PopupWindow_Message": {
-    "message": "Do you want to add the selected text to the NG list?:"
+    "message": "Do you want to add the selected text to the blocked words?:"
   },
   "ContextMenu_PopupWindow_Yes": {
     "message": "Add"
