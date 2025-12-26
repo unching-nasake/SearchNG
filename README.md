@@ -1,8 +1,6 @@
-# SearchFilter - Bing & Google Word Filter
+# SearchNG - Bing & Google Word Filter
 
-検索結果から特定のワードを含むサイトや、特定の動画・ニュースなどを非表示にする拡張機能です。
-
-パソコン版の Chromium 系ブラウザ (Google Chrome, Microsoft Edge など)と、 PC 版・Android 版の Firefox 系ブラウザに対応しています。
+Google/Bing の検索結果に NG ワードを設定し、検索結果から除外するブラウザ拡張機能です。
 
 ## インストール方法
 
@@ -24,19 +22,7 @@
 
 ### Firefox
 
-(PC 版)
-
-1. [リリースページ](https://github.com/ikuuyARbdMSt/SearchNG/releases)を開きます。
-2. リリースページにある xpi ファイルをクリックして、Firefox に導入できます。
-
-(Android 版)
-
-1. [リリースページ](https://github.com/ikuuyARbdMSt/SearchNG/releases)を開きます。
-2. リリースページにある xpi ファイルをダウンロードします。
-3. Firefox → 設定 → 一番下の 「Firefox について」 を開きます。
-4. Firefox ロゴを 5 回連続タップして、デバッグモードを有効にします。
-5. 設定に戻ると 「ファイルから拡張機能をインストール」 が追加されます。
-6. それを押して、ダウンロードした xpi ファイルをインストールします。
+お使いの Firefox ブラウザで[ストアページ](https://addons.mozilla.org/ja/firefox/addon/searchng/)を開き、「Firefox へ追加」ボタンを押して導入してください。
 
 ## 機能
 

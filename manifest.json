@@ -30,7 +30,6 @@
         "https://www.bing.com/news/search?*",
         "https://www.bing.com/shop?*",
         "https://www.google.com/search?*",
-        "https://www.google.co.jp/search?*",
         "https://news.google.com/*"
       ],
       "js": ["/js/content.js"],
